@@ -3,6 +3,9 @@
 //! crate is intentionally narrow so callers can benchmark the boundary honestly.
 
 use std::collections::hash_map::DefaultHasher;
+
+pub mod reconcile;
+pub mod semantic;
 use std::hash::{Hash, Hasher};
 
 pub fn fingerprint_bytes(value: &[u8]) -> String {

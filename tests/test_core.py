@@ -6,6 +6,13 @@ import pytest
 
 from atlas_core.cdc import detect_gaps, make_event, replay
 from atlas_core.chaos import inject, run_game_day
+from atlas_core.archaeology import archaeologize
+from atlas_core.assumptions import Assumption, AssumptionLedger, AssumptionStatus
+from atlas_core.counterfactual import counterfactual_remove_transaction, reconstruct_state
+from atlas_core.epistemic import EvidenceLedger, EvidenceRecord, EpistemicStatus
+from atlas_core.genome import DataGenome, genome_distance
+from atlas_core.ir import IRMapping, compile_ir, diff_ir
+from atlas_core.semantic import compare_rows, semantic_merkle_root
 from atlas_core.contracts import MigrationConfig, MigrationState, Operation
 from atlas_core.fingerprint import merkle_root, row_fingerprint
 from atlas_core.governance import RBAC, assess_risk, policy_gate
@@ -112,6 +119,53 @@ def test_mapping_registry_requires_explicit_approval():
 def test_seeded_chaos_is_reproducible():
     assert inject("change_schema", "m", 42) == inject("change_schema", "m", 42)
     assert run_game_day(42) == run_game_day(42)
+
+
+def test_genome_distance_is_explainable():
+    left = DataGenome("left", "v1", {"accounts": {"columns": ["id", "balance"]}}, (), (), {"event_time": "present"}, {"accounts": 0.1}, {"balance": {"mean": 10}}, {}, (), {"balance": "money"}, ({"name": "account_conservation"},), (), (), {}, {"accounts": ("transactions",)}, {"semantic": 0.1})
+    right = DataGenome("right", "v1", {"accounts": {"columns": ["id", "balance"]}, "transactions": {"columns": ["id"]}}, (), (), {"event_time": "present"}, {"accounts": 0.2}, {"balance": {"mean": 10}}, {}, (), {"balance": "money"}, ({"name": "account_conservation"},), (), (), {}, {"accounts": ("transactions",)}, {"semantic": 0.1})
+    distance = genome_distance(left, right)
+    assert distance["entity"].value > 0
+    assert distance["invariant"].value == 0
+
+
+def test_archaeology_labels_findings_without_promoting_truth():
+    report = archaeologize("source", {"accounts": [{"account_id": "A1", "balance": "10.00", "status": "CLOSED", "closed_at": "2026-01-01"}]})
+    assert report.by_category("identifier")
+    assert all(item.status.value in {"KNOWN", "LIKELY", "INFERRED", "OBSERVED"} for item in report.findings)
+
+
+def test_evidence_decay_and_conflict():
+    ledger = EvidenceLedger()
+    record = EvidenceRecord("e1", "account.status", "closed means inactive", "fixture", EpistemicStatus.OBSERVED, 0.9, created_at="2020-01-01T00:00:00+00:00")
+    ledger.add(record)
+    assert ledger.refresh(at="2020-02-01T00:00:00+00:00")[0].decayed_confidence(at="2020-02-01T00:00:00+00:00") < 0.9
+    conflict = ledger.conflict("c1", "account.status", ["e1"])
+    assert conflict.unresolved and ledger.get("e1").status == EpistemicStatus.CONTRADICTED
+
+
+def test_assumption_invalidation_identifies_dependents():
+    ledger = AssumptionLedger()
+    ledger.add(Assumption("a1", "timestamps are UTC", (), 0.9, AssumptionStatus.INFERRED, "2026-01-01T00:00:00+00:00", dependent_results=("mapping-v1",)))
+    _, dependents = ledger.invalidate("a1", "2026-01-02T00:00:00+00:00", "offset evidence contradicted assumption")
+    assert dependents == ("mapping-v1",)
+
+
+def test_semantic_equivalence_separates_bytes_from_meaning():
+    result = compare_rows({"event_time": "2026-08-21 10:00:00"}, {"event_time": "2026-08-21T10:00:00Z"})
+    assert not result["byte_equivalent"]
+    assert result["semantic_equivalent"]
+    assert semantic_merkle_root([{"value": "10.0"}]) == semantic_merkle_root([{"value": 10}])
+
+
+def test_ir_is_diffable_and_counterfactual_is_labeled():
+    left = compile_ir("s1", "t1", [IRMapping("accounts", "balance", "accounts", "balance", "IDENTITY(source.balance)")])
+    right = compile_ir("s1", "t1", [IRMapping("accounts", "balance", "accounts", "balance", "DECIMAL(source.balance, scale=2)")])
+    assert diff_ir(left, right)["mapping_changes"]
+    counterfactual = counterfactual_remove_transaction({"T1": {"account_id": "A1", "amount": 10}}, "T1")
+    assert counterfactual.status == EpistemicStatus.COUNTERFACTUAL
+    reconstruction = reconstruct_state("A1", [{"balance": 100}], later_state={"balance": 110})
+    assert reconstruction.status == EpistemicStatus.RECONSTRUCTED and reconstruction.confidence > 0
 
 
 def test_synthetic_bank_contains_controlled_defects():

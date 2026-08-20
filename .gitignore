@@ -13,3 +13,6 @@ target/
 .env
 secrets/
 golden-datasets/generated/
+apps/web-console/node_modules/
+apps/web-console/dist/
+apps/web-console/tsconfig.tsbuildinfo

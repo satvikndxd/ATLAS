@@ -1,12 +1,18 @@
 # ATLAS
 
-## Autonomous Enterprise Data Migration, Verification, Recovery & Cutover Fabric
+## Experimental infrastructure runtime for data-system reality
 
-ATLAS is a correctness-first reference implementation for migrating heterogeneous legacy data while the source system continues changing. It is designed to answer a hard systems question:
+ATLAS is a research-grade runtime for preserving and reasoning about data-system reality across **transformation, evolution, and failure**. A migration is the first reference application, not the product boundary.
 
-> **How can a migration system produce continuously measurable evidence of correctness while remaining resumable and diagnosable under failure?**
+> **If the database, schema, representation, transformation engine, or execution path changes, how can we demonstrate that everything that mattered was preserved?**
 
-ATLAS is deliberately not presented as production-ready software. The repository contains a runnable deterministic reference engine, a .NET control-plane boundary, a Rust accelerator boundary, SQL Server artifacts, synthetic banking fixtures, tests, failure-injection primitives, and technical design documents. Database-specific adapters and distributed deployment are explicit extension points rather than hidden claims.
+The core model is:
+
+```text
+STATE + MEANING + TIME + EVIDENCE + PROVENANCE + UNCERTAINTY
+```
+
+ATLAS deliberately distinguishes `OBSERVED`, `DERIVED`, `INFERRED`, `RECONSTRUCTED`, `PREDICTED`, `SIMULATED`, and `COUNTERFACTUAL` results. It is not presented as production-ready software. Live SQL Server integration, distributed queues/leases, provider-specific public-data connectors, and full release builds remain explicit extension boundaries.
 
 ## What is implemented
 
@@ -21,7 +27,13 @@ ATLAS is deliberately not presented as production-ready software. The repository
 | Governance | Risk factors, policy gates, RBAC permissions, approval-aware cutover orchestration, PII logging denial |
 | Interfaces | Python CLI, OpenAPI-oriented ASP.NET Core control-plane scaffold, file and DB connector boundaries |
 | Database evidence | SQL Server legacy/target schemas, indexes, stored procedure and reconciliation artifacts, isolation/deadlock lab scripts |
-| Performance boundary | Rust fingerprint/Merkle crate with a narrow FFI-compatible surface; Python remains the reference baseline |
+| Performance boundary | Rust fingerprint, semantic normalization, and hierarchical reconciliation kernels with a Python fallback |
+| Data Genome | Entity, relationship, temporal, distribution, semantic-type, invariant, provenance, failure, dependency, and uncertainty model |
+| System archaeology | Candidate identifiers, PII, temporal/monetary fields, implicit relationships, categorical states, and candidate rules with epistemic status |
+| Epistemic evidence | Evidence ledger, knowledge decay, contradiction objects, assumption invalidation, and dependent-result blast radius |
+| Semantic preservation | Byte-versus-semantic comparison, semantic fingerprints, semantic Merkle roots, and explainable semantic diff |
+| Research runtime | Migration IR, shadow simulation, counterfactual removal, reconstruction candidates, public snapshot/time-capsule boundary, and as-of knowledge queries |
+| Operator/research console | TypeScript/React console with Overview, Archaeology, Data Genome, Migration Runtime, Evidence, Incidents, and Research Lab views |
 
 ## Architecture
 
@@ -49,8 +61,9 @@ ATLAS is deliberately not presented as production-ready software. The repository
                 | JSONL reference store; DB adapters optional|
                 +------------------------------------------+
 
- Python data intelligence    Rust deterministic accelerator
- profiling, schema inference hashing, fingerprints, Merkle roots
+  Python reference engine      .NET control plane        Rust kernels       React console
+ archaeology/genome/IR       orchestration/policy     semantic/Merkle     operator/research
+
 ```
 
 The reference engine uses at-least-once CDC semantics, deterministic transformations, idempotent target writes, exact reconciliation checks, and append-only audit evidence. It does not claim exactly-once distributed delivery.
@@ -78,9 +91,22 @@ python -m apps.cli.atlas_cli profile golden-datasets/generated
 python -m apps.cli.atlas_cli benchmark --rows 10000
 python -m apps.cli.atlas_cli chaos worker-crash --seed 42
 python -m apps.cli.atlas_cli chaos cdc-gap --seed 42
+python -m apps.cli.atlas_cli archaeology golden-datasets/generated
+python -m apps.cli.atlas_cli genome golden-datasets/generated
+python -m apps.cli.atlas_cli compile --risk 0.7
+python -m apps.cli.atlas_cli public-demo  # boundary report; no live API calls
+cd apps/web-console && pnpm install && pnpm dev
 ```
 
 The CLI entry point is also exposed as `atlas` when the project is installed with pip.
+
+## Operator and research console
+
+The TypeScript/React console is a demo-mode operator surface with separate views for the Overview, System Archaeology, Data Genome, Migration Runtime, Evidence Ledger, Incidents, and Research Lab. It uses a restrained **Stripe-inspired** visual system—light workspace, indigo proof states, thin borders, compact metrics, and high information density—without copying Stripe branding or hiding uncertainty.
+
+![ATLAS operator console overview](docs/ui-overview.webp)
+
+See [`apps/web-console/README.md`](apps/web-console/README.md) for the UI run instructions and live-control-plane boundary.
 
 ## SQL Server reference environment
 
@@ -111,8 +137,9 @@ This is a local reference model. Network partitions, SQL Server deadlock reprodu
 ```text
 atlas_core/                         Python reference domain engine
 apps/cli/                           CLI and deterministic demo
-apps/control-plane-dotnet/           ASP.NET Core control-plane scaffold
-crates/fingerprint/                  Rust fingerprint/Merkle boundary
+apps/control-plane-dotnet/           ASP.NET Core control plane, services, policy, scheduler
+apps/web-console/                    TypeScript/React operator and research console
+crates/fingerprint/                  Rust fingerprint, semantic, and reconciliation kernels
 sqlserver/                           T-SQL schema, procedures, views, labs
 connectors/                          Adapter boundary directories
 infrastructure/                      Compose and container assets
@@ -125,9 +152,9 @@ benchmarks/                          Reproducible benchmark harness
 
 ## Honest limitations
 
-This repository does not claim production scale, zero downtime, exactly-once delivery, bank-grade security, or measured SQL Server throughput. The default demo is synthetic and local. The Rust crate currently provides a narrow deterministic hashing boundary rather than a complete native accelerator. The .NET control plane is a scaffold because the build environment used for the reference verification does not include the .NET SDK. SQL Server and PostgreSQL adapters are optional and require their vendor drivers and live databases.
+This repository does not claim production scale, zero downtime, exactly-once delivery, bank-grade security, or measured SQL Server throughput. The default demo is synthetic and local. The public-data command reports an explicit connector boundary and does not imply live SEC/GLEIF/ECB/FRED/Companies House ingestion. The React console is a polished demo-mode operator/research surface; the .NET service exposes production-shaped API boundaries but has not been compiled in this environment because the .NET SDK is absent. The Rust kernels have source and CI boundaries but have not been benchmarked here because the Rust toolchain is absent.
 
-The project earns credibility by publishing those limitations. The next engineering priorities are SQL Server integration tests, distributed leases and queues, real CDC adapters, OpenTelemetry exporters, a web incident console, contract-version migration, and full security integration.
+The project earns credibility by publishing those limitations. The next integration priorities are live SQL Server/PostgreSQL contract tests, distributed leases and queues, OpenTelemetry exporters, official provider connectors with immutable snapshots, and a deployed control-plane/console origin.
 
 ## License
 

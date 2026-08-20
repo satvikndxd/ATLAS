@@ -1,47 +1,13 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ATLAS Operator Console</title>
-  <style>
-    :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    body { margin: 0; background: #0b1020; color: #dbeafe; }
-    header { padding: 24px 32px; border-bottom: 1px solid #24304d; }
-    main { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 24px 32px; }
-    section { border: 1px solid #24304d; border-radius: 8px; padding: 16px; background: #111936; }
-    h1 { margin: 0 0 6px; font-size: 24px; } h2 { font-size: 15px; color: #93c5fd; }
-    .metric { display: inline-block; padding: 12px; margin: 4px; background: #18264c; border-radius: 6px; }
-    pre { white-space: pre-wrap; overflow-wrap: anywhere; color: #cbd5e1; }
-    button { background: #2563eb; color: white; border: 0; padding: 8px 12px; border-radius: 4px; cursor: pointer; }
-    @media (max-width: 800px) { main { grid-template-columns: 1fr; } }
-  </style>
-</head>
-<body>
-  <header>
-    <h1>ATLAS Operator Console</h1>
-    <div>Evidence-first migration state, incident context, reconciliation, and cutover controls.</div>
-  </header>
-  <main>
-    <section><h2>Migration status</h2><div id="status"><span class="metric">STATE: UNKNOWN</span></div><button onclick="loadData()">Refresh control plane</button></section>
-    <section><h2>Incident / recovery timeline</h2><pre id="timeline">No events loaded.</pre></section>
-    <section><h2>Reconciliation evidence</h2><pre id="reconciliation">No reconciliation report loaded.</pre></section>
-    <section><h2>Audit ledger</h2><pre id="audit">No audit entries loaded.</pre></section>
-  </main>
-  <script>
-    async function get(path) {
-      try { const response = await fetch(path); return response.ok ? await response.json() : { error: response.statusText }; }
-      catch (error) { return { error: String(error), note: 'Open this file through the control-plane origin or serve it from a local HTTP server.' }; }
-    }
-    async function loadData() {
-      const migrations = await get('/api/v1/migrations');
-      const audit = await get('/api/v1/audit');
-      document.querySelector('#status').innerHTML = `<span class="metric">MIGRATIONS: ${Array.isArray(migrations) ? migrations.length : 'N/A'}</span>`;
-      document.querySelector('#timeline').textContent = JSON.stringify(migrations, null, 2);
-      document.querySelector('#audit').textContent = JSON.stringify(audit, null, 2);
-      document.querySelector('#reconciliation').textContent = 'Select a migration to load table-level reports.';
-    }
-    loadData();
-  </script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f7f9fc" />
+    <title>ATLAS · Reality under transformation</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
