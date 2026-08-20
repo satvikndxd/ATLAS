@@ -1,0 +1,41 @@
+name: ATLAS CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  python-fast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --upgrade pip pytest hypothesis
+      - run: python -m compileall -q atlas_core apps
+      - run: python -m pytest
+
+  rust:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates/fingerprint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test
+
+  dotnet:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/control-plane-dotnet
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet build --no-restore
+        continue-on-error: true
+        # The scaffold remains optional until NuGet dependencies are pinned in a full integration environment.

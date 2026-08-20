@@ -1,0 +1,7 @@
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-alpine AS runtime
+WORKDIR /app
+RUN addgroup -S atlas && adduser -S atlas -G atlas
+USER atlas
+EXPOSE 8080
+COPY apps/control-plane-dotnet/bin/Release/net8.0/ .
+ENTRYPOINT ["dotnet", "Atlas.ControlPlane.dll"]
