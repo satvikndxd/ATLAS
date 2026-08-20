@@ -1,100 +1,242 @@
 using System.Collections.Concurrent;
-using Microsoft.Extensions.Hosting;
 
 namespace Atlas.ControlPlane;
 
-public record AtlasMigration(string MigrationId, string State, string Source, string Target, string PlanVersion, DateTimeOffset UpdatedAt);
-public record AtlasApproval(string ApprovalId, string MigrationId, string Operation, string RequestedBy, string? ApprovedBy, string Status, DateTimeOffset UpdatedAt);
-public record AtlasIncident(string IncidentId, string MigrationId, string Severity, string Title, string Status, DateTimeOffset CreatedAt);
-public record AtlasReconciliation(string MigrationId, string Table, bool ByteEquivalent, bool SemanticEquivalent, bool FinancialInvariantsPassed, DateTimeOffset CreatedAt);
-
-public interface IPolicyEngine
+public static class ContractVersion
 {
-    PolicyDecision Evaluate(PolicyInput input);
+    public const string V1 = "1.0";
 }
 
-public sealed record PolicyInput(bool ReconciliationPassed, int CdcLag, bool BreakingSchemaChange, bool PiiLogging, double RiskScore);
-public sealed record PolicyDecision(bool Allowed, IReadOnlyList<string> Reasons);
+public record AtlasMigration(
+    string SchemaVersion,
+    string MigrationId,
+    string State,
+    string Source,
+    string Target,
+    string PlanVersion,
+    double Progress,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt);
 
-public sealed class PolicyEngine : IPolicyEngine
-{
-    public PolicyDecision Evaluate(PolicyInput input)
-    {
-        var reasons = new List<string>();
-        if (!input.ReconciliationPassed) reasons.Add("reconciliation failed");
-        if (input.CdcLag > 0) reasons.Add("CDC lag exceeds policy");
-        if (input.BreakingSchemaChange) reasons.Add("breaking schema change requires approval");
-        if (input.PiiLogging) reasons.Add("raw PII logging is denied");
-        if (input.RiskScore >= .5) reasons.Add("risk score requires human approval");
-        return new PolicyDecision(reasons.Count == 0, reasons);
-    }
-}
+public record AtlasJob(
+    string SchemaVersion,
+    string JobId,
+    string MigrationId,
+    string State,
+    string? Table,
+    string? Partition,
+    string? WorkerId,
+    string? LeaseId,
+    DateTimeOffset? LeaseExpiry,
+    int Attempt,
+    double Progress,
+    DateTimeOffset UpdatedAt);
 
-public interface IMigrationManager
+public record AtlasWorker(string SchemaVersion, string WorkerId, string Status, DateTimeOffset LastHeartbeat);
+
+public record AtlasApproval(
+    string SchemaVersion,
+    string ApprovalId,
+    string MigrationId,
+    string Operation,
+    string RequestedBy,
+    string? ApprovedBy,
+    string Status,
+    string? DecisionReason,
+    DateTimeOffset RequestedAt,
+    DateTimeOffset UpdatedAt);
+
+public record AtlasIncident(
+    string SchemaVersion,
+    string IncidentId,
+    string MigrationId,
+    string Severity,
+    string Title,
+    string Status,
+    string? Hypothesis,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt);
+
+public record AtlasReconciliation(
+    string SchemaVersion,
+    string ReconciliationId,
+    string MigrationId,
+    string Table,
+    string Status,
+    bool? ByteEquivalent,
+    bool? SemanticEquivalent,
+    bool FinancialInvariantsPassed,
+    int SourceCount,
+    int TargetCount,
+    DateTimeOffset CreatedAt);
+
+public record PolicyInput(bool ReconciliationPassed, int CdcLag, bool BreakingSchemaChange, bool PiiLogging, double RiskScore);
+public record PolicyDecision(string SchemaVersion, string DecisionId, string PolicyVersion, bool Allowed, IReadOnlyList<string> Reasons, DateTimeOffset EvaluatedAt);
+
+public interface IMigrationService
 {
     AtlasMigration Create(string migrationId, string source, string target);
-    AtlasMigration Transition(string migrationId, string nextState, string actor);
+    AtlasMigration? Get(string migrationId);
     IReadOnlyCollection<AtlasMigration> All();
+    AtlasMigration? Transition(string migrationId, string nextState, string actor, out string? error);
 }
 
-public sealed class MigrationManager : IMigrationManager
+public sealed class MigrationService : IMigrationService
 {
-    private readonly ConcurrentDictionary<string, AtlasMigration> _migrations = new();
-    private readonly ILogger<MigrationManager> _logger;
+    private static readonly HashSet<string> AllowedStates = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "DRAFT", "VALIDATING", "PLANNED", "APPROVAL_REQUIRED", "APPROVED", "RUNNING", "PAUSED", "RECOVERING", "RECONCILING", "VERIFIED", "CUTOVER_READY", "CUTOVER", "COMPLETED", "FAILED", "ABORTED", "ROLLED_BACK"
+    };
 
-    public MigrationManager(ILogger<MigrationManager> logger) => _logger = logger;
+    private readonly ConcurrentDictionary<string, AtlasMigration> _migrations = new();
+    private readonly ILogger<MigrationService> _logger;
+
+    public MigrationService(ILogger<MigrationService> logger) => _logger = logger;
 
     public AtlasMigration Create(string migrationId, string source, string target)
     {
-        var migration = new AtlasMigration(migrationId, "DRAFT", source, target, "plan-v1", DateTimeOffset.UtcNow);
-        _migrations[migrationId] = migration;
-        _logger.LogInformation("Migration {MigrationId} created in state {State}", migrationId, migration.State);
+        if (string.IsNullOrWhiteSpace(migrationId)) throw new ArgumentException("migration_id is required", nameof(migrationId));
+        var now = DateTimeOffset.UtcNow;
+        var migration = new AtlasMigration(ContractVersion.V1, migrationId, "DRAFT", source, target, "plan-v1", 0.0, now, now);
+        if (!_migrations.TryAdd(migrationId, migration)) throw new InvalidOperationException($"migration already exists: {migrationId}");
+        _logger.LogInformation("Created migration {MigrationId}", migrationId);
         return migration;
     }
 
-    public AtlasMigration Transition(string migrationId, string nextState, string actor)
+    public AtlasMigration? Get(string migrationId) => _migrations.TryGetValue(migrationId, out var migration) ? migration : null;
+
+    public IReadOnlyCollection<AtlasMigration> All() => _migrations.Values.OrderBy(item => item.CreatedAt).ToArray();
+
+    public AtlasMigration? Transition(string migrationId, string nextState, string actor, out string? error)
     {
-        if (!_migrations.TryGetValue(migrationId, out var current)) throw new KeyNotFoundException(migrationId);
-        var next = current with { State = nextState, UpdatedAt = DateTimeOffset.UtcNow };
-        _migrations[migrationId] = next;
-        _logger.LogInformation("Migration {MigrationId} transitioned {OldState}->{NewState} by {Actor}", migrationId, current.State, nextState, actor);
-        return next;
+        error = null;
+        if (!AllowedStates.Contains(nextState)) { error = $"unsupported state: {nextState}"; return null; }
+        if (!_migrations.TryGetValue(migrationId, out var current)) { error = $"migration not found: {migrationId}"; return null; }
+        if (current.State == "COMPLETED" || current.State == "ABORTED" || current.State == "FAILED" || current.State == "ROLLED_BACK") { error = $"terminal migration cannot transition: {current.State}"; return null; }
+        var updated = current with { State = nextState.ToUpperInvariant(), UpdatedAt = DateTimeOffset.UtcNow };
+        _migrations[migrationId] = updated;
+        _logger.LogInformation("Migration {MigrationId} transitioned {OldState}->{NewState} by {Actor}", migrationId, current.State, updated.State, actor);
+        return updated;
+    }
+}
+
+public interface IJobService
+{
+    IReadOnlyCollection<AtlasJob> All(string? migrationId = null);
+    IReadOnlyCollection<AtlasWorker> Workers();
+    AtlasJob Create(string migrationId, string? table, string? partition);
+}
+
+public sealed class JobService : IJobService
+{
+    private readonly ConcurrentDictionary<string, AtlasJob> _jobs = new();
+    private readonly ConcurrentDictionary<string, AtlasWorker> _workers = new();
+
+    public JobService()
+    {
+        _workers["control-plane"] = new AtlasWorker(ContractVersion.V1, "control-plane", "READY", DateTimeOffset.UtcNow);
     }
 
-    public IReadOnlyCollection<AtlasMigration> All() => _migrations.Values.ToArray();
+    public AtlasJob Create(string migrationId, string? table, string? partition)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var job = new AtlasJob(ContractVersion.V1, Guid.NewGuid().ToString("N"), migrationId, "QUEUED", table, partition, null, null, null, 0, 0.0, now);
+        _jobs[job.JobId] = job;
+        return job;
+    }
+
+    public IReadOnlyCollection<AtlasJob> All(string? migrationId = null) => _jobs.Values.Where(job => migrationId is null || job.MigrationId == migrationId).OrderBy(job => job.UpdatedAt).ToArray();
+    public IReadOnlyCollection<AtlasWorker> Workers() => _workers.Values.OrderBy(worker => worker.WorkerId).ToArray();
 }
 
-public interface IApprovalEngine
+public interface IApprovalService
 {
+    IReadOnlyCollection<AtlasApproval> All(string? migrationId = null);
     AtlasApproval Request(string migrationId, string operation, string actor);
-    AtlasApproval Approve(string approvalId, string approver);
+    AtlasApproval? Approve(string approvalId, string approver, string? reason, out string? error);
 }
 
-public sealed class ApprovalEngine : IApprovalEngine
+public sealed class ApprovalService : IApprovalService
 {
     private readonly ConcurrentDictionary<string, AtlasApproval> _approvals = new();
 
+    public IReadOnlyCollection<AtlasApproval> All(string? migrationId = null) => _approvals.Values.Where(item => migrationId is null || item.MigrationId == migrationId).OrderBy(item => item.RequestedAt).ToArray();
+
     public AtlasApproval Request(string migrationId, string operation, string actor)
     {
-        var approval = new AtlasApproval(Guid.NewGuid().ToString("N"), migrationId, operation, actor, null, "PENDING", DateTimeOffset.UtcNow);
+        var now = DateTimeOffset.UtcNow;
+        var approval = new AtlasApproval(ContractVersion.V1, Guid.NewGuid().ToString("N"), migrationId, operation, actor, null, "PENDING", null, now, now);
         _approvals[approval.ApprovalId] = approval;
         return approval;
     }
 
-    public AtlasApproval Approve(string approvalId, string approver)
+    public AtlasApproval? Approve(string approvalId, string approver, string? reason, out string? error)
     {
-        if (!_approvals.TryGetValue(approvalId, out var approval)) throw new KeyNotFoundException(approvalId);
-        var updated = approval with { ApprovedBy = approver, Status = "APPROVED", UpdatedAt = DateTimeOffset.UtcNow };
+        error = null;
+        if (!_approvals.TryGetValue(approvalId, out var approval)) { error = $"approval not found: {approvalId}"; return null; }
+        if (approval.Status != "PENDING") { error = $"approval is not pending: {approval.Status}"; return null; }
+        var updated = approval with { ApprovedBy = approver, Status = "APPROVED", DecisionReason = reason, UpdatedAt = DateTimeOffset.UtcNow };
         _approvals[approvalId] = updated;
         return updated;
     }
+}
+
+public sealed class IncidentService
+{
+    private readonly ConcurrentDictionary<string, AtlasIncident> _incidents = new();
+    public IReadOnlyCollection<AtlasIncident> All(string? migrationId = null) => _incidents.Values.Where(item => migrationId is null || item.MigrationId == migrationId).OrderByDescending(item => item.CreatedAt).ToArray();
+    public AtlasIncident Create(string migrationId, string severity, string title, string? hypothesis = null)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var incident = new AtlasIncident(ContractVersion.V1, Guid.NewGuid().ToString("N"), migrationId, severity.ToUpperInvariant(), title, "OPEN", hypothesis, now, now);
+        _incidents[incident.IncidentId] = incident;
+        return incident;
+    }
+}
+
+public sealed class ReconciliationService
+{
+    private readonly ConcurrentBag<AtlasReconciliation> _reports = new();
+    public IReadOnlyCollection<AtlasReconciliation> All(string? migrationId = null) => _reports.Where(item => migrationId is null || item.MigrationId == migrationId).OrderByDescending(item => item.CreatedAt).ToArray();
+    public AtlasReconciliation Record(string migrationId, string table, bool? byteEquivalent, bool? semanticEquivalent, bool financialInvariantsPassed, int sourceCount, int targetCount)
+    {
+        var status = byteEquivalent == true && semanticEquivalent == true && financialInvariantsPassed && sourceCount == targetCount ? "PASSED" : "INCONCLUSIVE";
+        var report = new AtlasReconciliation(ContractVersion.V1, Guid.NewGuid().ToString("N"), migrationId, table, status, byteEquivalent, semanticEquivalent, financialInvariantsPassed, sourceCount, targetCount, DateTimeOffset.UtcNow);
+        _reports.Add(report);
+        return report;
+    }
+}
+
+public interface IPolicyService
+{
+    PolicyDecision Precheck(PolicyInput input);
+}
+
+public sealed class PolicyService : IPolicyService
+{
+    public PolicyDecision Precheck(PolicyInput input)
+    {
+        var reasons = new List<string>();
+        if (!input.ReconciliationPassed) reasons.Add("reconciliation_failed");
+        if (input.CdcLag > 0) reasons.Add("cdc_lag_exceeds_policy");
+        if (input.BreakingSchemaChange) reasons.Add("breaking_schema_change");
+        if (input.PiiLogging) reasons.Add("raw_pii_logging_denied");
+        if (input.RiskScore >= 0.5) reasons.Add("risk_requires_approval");
+        return new PolicyDecision(ContractVersion.V1, Guid.NewGuid().ToString("N"), "policy-v1", reasons.Count == 0, reasons, DateTimeOffset.UtcNow);
+    }
+}
+
+public sealed class CutoverService
+{
+    private readonly IPolicyService _policy;
+    public CutoverService(IPolicyService policy) => _policy = policy;
+    public PolicyDecision Precheck(PolicyInput input) => _policy.Precheck(input);
 }
 
 public sealed class AtlasScheduler : BackgroundService
 {
     private readonly ILogger<AtlasScheduler> _logger;
     public AtlasScheduler(ILogger<AtlasScheduler> logger) => _logger = logger;
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("ATLAS scheduler started");
@@ -104,35 +246,4 @@ public sealed class AtlasScheduler : BackgroundService
             await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
         }
     }
-}
-
-public sealed class IncidentManager
-{
-    private readonly ConcurrentBag<AtlasIncident> _incidents = new();
-    public AtlasIncident Create(string migrationId, string severity, string title)
-    {
-        var incident = new AtlasIncident(Guid.NewGuid().ToString("N"), migrationId, severity, title, "OPEN", DateTimeOffset.UtcNow);
-        _incidents.Add(incident);
-        return incident;
-    }
-    public IReadOnlyCollection<AtlasIncident> All() => _incidents.ToArray();
-}
-
-public sealed class ReconciliationCoordinator
-{
-    private readonly ConcurrentBag<AtlasReconciliation> _reports = new();
-    public AtlasReconciliation Record(string migrationId, string table, bool byteEquivalent, bool semanticEquivalent, bool financialInvariantsPassed)
-    {
-        var report = new AtlasReconciliation(migrationId, table, byteEquivalent, semanticEquivalent, financialInvariantsPassed, DateTimeOffset.UtcNow);
-        _reports.Add(report);
-        return report;
-    }
-    public IReadOnlyCollection<AtlasReconciliation> All() => _reports.ToArray();
-}
-
-public sealed class CutoverCoordinator
-{
-    private readonly IPolicyEngine _policy;
-    public CutoverCoordinator(IPolicyEngine policy) => _policy = policy;
-    public PolicyDecision Precheck(PolicyInput input) => _policy.Evaluate(input);
 }

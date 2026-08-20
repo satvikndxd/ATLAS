@@ -16,6 +16,8 @@ ATLAS deliberately distinguishes `OBSERVED`, `DERIVED`, `INFERRED`, `RECONSTRUCT
 
 ## What is implemented
 
+The stabilization documents are the source of truth for current scope: [`docs/ENGINEERING_BASELINE.md`](docs/ENGINEERING_BASELINE.md), [`docs/SUPPORT_MATRIX.md`](docs/SUPPORT_MATRIX.md), [`docs/DOMAIN_MODEL.md`](docs/DOMAIN_MODEL.md), and [`docs/TECHNICAL_DEBT_REPORT.md`](docs/TECHNICAL_DEBT_REPORT.md).
+
 | Area | Reference implementation |
 |---|---|
 | Deterministic migration | Batch transforms, idempotent in-memory loading, checkpoints, quarantine, resumable execution |
@@ -25,7 +27,7 @@ ATLAS deliberately distinguishes `OBSERVED`, `DERIVED`, `INFERRED`, `RECONSTRUCT
 | Verification | Counts, aggregates, hashes, key coverage, duplicate detection, referential checks, financial invariants, distributions, samples, Merkle-style partition localization |
 | Recovery | Durable JSONL checkpoints, explicit state machine, quarantine records, seeded chaos scenarios, audit hash chain |
 | Governance | Risk factors, policy gates, RBAC permissions, approval-aware cutover orchestration, PII logging denial |
-| Interfaces | Python CLI, OpenAPI-oriented ASP.NET Core control-plane scaffold, file and DB connector boundaries |
+| Interfaces | Python CLI, compiled ASP.NET Core control-plane service with versioned API, React live/demo console, file and DB connector boundaries |
 | Database evidence | SQL Server legacy/target schemas, indexes, stored procedure and reconciliation artifacts, isolation/deadlock lab scripts |
 | Performance boundary | Rust fingerprint, semantic normalization, and hierarchical reconciliation kernels with a Python fallback |
 | Data Genome | Entity, relationship, temporal, distribution, semantic-type, invariant, provenance, failure, dependency, and uncertainty model |
@@ -98,7 +100,13 @@ python -m apps.cli.atlas_cli public-demo  # boundary report; no live API calls
 cd apps/web-console && pnpm install && pnpm dev
 ```
 
-The CLI entry point is also exposed as `atlas` when the project is installed with pip.
+The CLI entry point is also exposed as `atlas` when the project is installed with pip. To run the full local verification path:
+
+```bash
+./scripts/verify-all.sh
+```
+
+The verifier prints explicit `PASS`, `SKIPPED`, and `FAIL` results. It never treats unavailable Docker databases as passing integration tests.
 
 ## Operator and research console
 

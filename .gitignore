@@ -10,6 +10,8 @@ __pycache__/
 bin/
 obj/
 target/
+TestResults/
+*.trx
 .env
 secrets/
 golden-datasets/generated/

@@ -8,14 +8,14 @@ ATLAS is organized as a deterministic reference engine plus replaceable integrat
 
 | Plane | Responsibility | Current implementation |
 |---|---|---|
-| Control | Migration metadata, state transitions, approvals, health | ASP.NET Core scaffold and Python state machine |
+| Control | Migration metadata, state transitions, jobs, approvals, policy, incidents, health | Compiled ASP.NET Core control plane with versioned v1 JSON and Python reference semantics |
 | Data | Extraction, transformation, loading, checkpoints | Python migration engine and connector contracts |
 | Evidence | Reconciliation, hashes, CDC replay, audit | Python reconciliation/CDC/state modules |
 | Intelligence | Profiling, relationship inference, mapping evidence | Python schema module; optional reasoning is not required |
 | Operations | CLI, reports, chaos, benchmarks | Python CLI and deterministic test harness |
 | Acceleration | Hashing and Merkle primitives | Rust crate boundary |
 
-The first vertical slice prioritizes correctness and replayability. A distributed queue, remote object store, and telemetry exporter can be connected behind the same contracts later without changing the transformation or reconciliation semantics.
+The stabilized vertical slice prioritizes correctness, replayability, and one contract path. The React console consumes the control-plane API in explicitly configured live mode or renders clearly labeled offline demo fixtures. A distributed queue, remote object store, and telemetry exporter can be connected behind the same contracts later without changing transformation or reconciliation semantics.
 
 ## Delivery semantics
 

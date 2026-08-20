@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
   Activity,
@@ -30,6 +30,7 @@ import {
   Zap,
 } from 'lucide-react'
 import './styles.css'
+import { apiBaseUrl, fetchLiveSnapshot, type LiveSnapshot } from './api'
 
 type ViewId = 'overview' | 'archaeology' | 'genome' | 'migration' | 'evidence' | 'incidents' | 'research'
 
@@ -99,7 +100,7 @@ function MetricCard({ item }: { item: (typeof metrics)[number] }) {
   )
 }
 
-function SectionHeader({ eyebrow, title, copy, action }: { eyebrow: string; title: string; copy?: string; action?: React.ReactNode }) {
+function SectionHeader({ eyebrow, title, copy, action }: { eyebrow: string; title: string; copy?: string; action?: ReactNode }) {
   return <div className="section-heading"><div><div className="eyebrow">{eyebrow}</div><h2>{title}</h2>{copy && <p>{copy}</p>}</div>{action}</div>
 }
 
@@ -173,12 +174,39 @@ function ResearchView() {
   </>
 }
 
+function LiveConsole({ snapshot, onRefresh, active }: { snapshot: LiveSnapshot; onRefresh: () => void; active: ViewId }) {
+  const running = snapshot.migrations.filter(item => ['RUNNING', 'RECOVERING', 'RECONCILING'].includes(item.state))
+  return <>
+    <SectionHeader eyebrow={`Live control plane / ${apiBaseUrl}`} title={active === 'migration' ? 'Migration execution state' : 'Live migration operations'} copy="This view is backed by the .NET control plane. Demo fixtures are disabled while live mode is active." action={<button className="secondary" onClick={onRefresh}><RotateCcw size={15} />Refresh</button>} />
+    <div className="metric-grid"><div className="metric-card"><div className="metric-label">Migrations</div><div className="metric-value-row"><strong>{snapshot.migrations.length}</strong><span className="delta blue">live</span></div><div className="metric-caption">control-plane records</div></div><div className="metric-card"><div className="metric-label">Active executions</div><div className="metric-value-row"><strong>{running.length}</strong><span className="delta green">observed</span></div><div className="metric-caption">running, recovering, or reconciling</div></div><div className="metric-card"><div className="metric-label">Jobs</div><div className="metric-value-row"><strong>{snapshot.jobs.length}</strong><span className="delta purple">live</span></div><div className="metric-caption">queued and executing work</div></div><div className="metric-card"><div className="metric-label">Workers</div><div className="metric-value-row"><strong>{snapshot.workers.length}</strong><span className="delta green">reported</span></div><div className="metric-caption">last fetched {new Date(snapshot.fetchedAt).toLocaleTimeString()}</div></div></div>
+    <div className="panel table-panel"><div className="table-toolbar"><div><div className="eyebrow">Versioned API / schema 1.0</div><h3>Migration list</h3></div><StatusPill tone="green">LIVE</StatusPill></div><div className="genome-table"><div className="table-row table-header"><span>Migration</span><span>State</span><span>Source → target</span><span>Progress</span><span>Updated</span></div>{snapshot.migrations.length === 0 ? <div className="empty-state">No migrations have been created in the live control plane.</div> : snapshot.migrations.map(item => <div className="table-row" key={item.migrationId}><span className="object-name"><Activity size={15} />{item.migrationId}</span><span><StatusPill tone={item.state === 'RUNNING' ? 'green' : item.state === 'FAILED' ? 'red' : 'blue'}>{item.state}</StatusPill></span><span>{item.source} → {item.target}</span><span className="confidence"><span className="confidence-bar"><i style={{ width: `${item.progress * 100}%` }} /></span>{Math.round(item.progress * 100)}%</span><span className="mono muted">{new Date(item.updatedAt).toLocaleString()}</span></div>)}</div></div>
+    <div className="dashboard-grid lower-grid"><div className="panel"><SectionHeader eyebrow="Workers" title="Worker status" /><div className="knowledge-list">{snapshot.workers.map(worker => <div key={worker.workerId}><span className="knowledge-mark observed" /><div><strong>{worker.workerId}</strong><span>{worker.status} · heartbeat {new Date(worker.lastHeartbeat).toLocaleTimeString()}</span></div><b>LIVE</b></div>)}</div></div><div className="panel"><SectionHeader eyebrow="Jobs" title="Execution queue" /><div className="knowledge-list">{snapshot.jobs.slice(0, 6).map(job => <div key={job.jobId}><span className="knowledge-mark derived" /><div><strong>{job.table ?? job.jobId}</strong><span>{job.state} · attempt {job.attempt}</span></div><b>{Math.round(job.progress * 100)}%</b></div>)}{snapshot.jobs.length === 0 && <div className="empty-state">No jobs reported.</div>}</div></div></div>
+  </>
+}
+
+function LiveConnectionState({ error, loading, retry }: { error: string | null; loading: boolean; retry: () => void }) {
+  return <div className="panel live-connection-state"><div className={`connection-hero-icon ${error ? 'error' : ''}`}>{error ? <AlertTriangle size={22} /> : <Activity size={22} />}</div><div className="eyebrow">Live control plane</div><h2>{error ? 'Connection failed' : 'Connecting to ATLAS control plane'}</h2><p>{error ?? `Requesting versioned migration state from ${apiBaseUrl}. Demo fixtures remain disabled.`}</p>{error && <button className="primary" onClick={retry}><RotateCcw size={15} />Retry connection</button>}</div>
+}
+
 function App() {
   const [active, setActive] = useState<ViewId>('overview')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [connected, setConnected] = useState(false)
+  const [liveSnapshot, setLiveSnapshot] = useState<LiveSnapshot | null>(null)
+  const [liveError, setLiveError] = useState<string | null>(null)
+  const [liveLoading, setLiveLoading] = useState(false)
+  const loadLive = async () => {
+    setLiveLoading(true)
+    setLiveError(null)
+    try { setLiveSnapshot(await fetchLiveSnapshot()) } catch (error) { setLiveSnapshot(null); setLiveError(error instanceof Error ? error.message : String(error)) } finally { setLiveLoading(false) }
+  }
+  useEffect(() => { if (connected) { void loadLive() } else { setLiveSnapshot(null); setLiveError(null) } }, [connected])
   const activeLabel = useMemo(() => nav.find(item => item.id === active)?.label ?? 'Overview', [active])
   const renderView = () => {
+    if (connected) {
+      if (liveSnapshot) return <LiveConsole snapshot={liveSnapshot} onRefresh={() => { void loadLive() }} active={active} />
+      return <LiveConnectionState loading={liveLoading} error={liveError} retry={() => { void loadLive() }} />
+    }
     if (active === 'overview') return <Overview setView={setActive} />
     if (active === 'genome') return <GenomeView />
     if (active === 'archaeology') return <ArchaeologyView />

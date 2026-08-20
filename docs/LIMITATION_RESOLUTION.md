@@ -1,0 +1,17 @@
+# Stabilization Limitation Resolution
+
+This document records measured scope changes without deleting unresolved limitations.
+
+| Before | Implementation | Evidence | New support scope | Remaining limitation |
+|---|---|---|---|---|
+| .NET control plane was an uncompiled scaffold with optional CI | Added pinned .NET 8 SDK declaration, canonical service layer, API routes, auth/CORS gate, and a four-test project | `dotnet build` succeeds; `dotnet test` reports 4 passed; API smoke covers health, migration, jobs, workers, policy, and OpenAPI | Local .NET control-plane process with versioned snake_case JSON and live-mode API-key gate | State is in-memory; no durable repository, IdP, or external deployment |
+| React console was fixture-only | Added typed API client, snake_case-to-UI normalization, explicit live connection mode, loading/error state, refresh, and no silent fixture fallback | `pnpm install --frozen-lockfile` and `pnpm build` succeed; live API smoke returns matching contract fields | Console can display live migrations/jobs/workers when `VITE_API_BASE_URL` and optional key are configured | Mutating operator actions and persistent auth/session are not fully wired |
+| Cross-language contracts were duplicated | Added `contracts/v1/domain.schema.json`, domain model document, Python API mapping, C# snake_case serialization, and TypeScript wire normalization | .NET smoke payloads use `schema_version`, `migration_id`, `plan_version`; React build succeeds | Stable v1 serialized vocabulary for current migration/control-plane paths | Full generated SDK pipeline and schema validation in every language remain future work |
+| Python connector contract was in-memory/file focused | Added common discover/read/write/transaction/reconcile methods and contract tests | 22 tests run with 2 explicit live-db skips; rollback and idempotent in-memory writes pass | Reference adapters now share a stable conceptual contract | SQL Server/PostgreSQL live execution still requires vendor drivers and disposable databases |
+| CI allowed .NET failure and omitted frontend/lint gates | Added Python, Rust test/fmt/clippy, .NET restore/build/test, frontend frozen build, API smoke, and manual live-db jobs | Workflow file now has required language/build jobs and explicit manual live-db skip | CI can reject broken language/build boundaries | GitHub Actions execution is pending the next push; live DB job is manual and not a passing test |
+| Verification was fragmented | Added `scripts/verify-all.sh` with explicit PASS/SKIPPED/FAIL output | Local run: Python, Rust, .NET, frontend PASS; Docker/DB explicitly SKIPPED because Docker is unavailable | One-command local verification with no false green integration result | Compose/SQL Server/PostgreSQL and end-to-end telemetry remain unverified |
+| Configuration was implicit | Added `global.json`, `rust-toolchain.toml`, `.env.example`, mode selection, API key gate, and allowed origins | Local builds use declared toolchain boundaries; live mode rejects missing `ATLAS_API_KEY` | Safer local/demo/live separation | Secret manager, TLS/mTLS, external identity, and production config validation remain |
+
+## Current release statement
+
+The stabilization release is a coherent local reference/control-plane system with a tested offline connector contract and a compiled Rust/.NET/React boundary. It is not a live SQL Server/PostgreSQL deployment, a distributed queue/lease system, a zero-downtime migration service, or a measured production benchmark.

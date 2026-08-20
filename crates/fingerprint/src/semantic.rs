@@ -7,7 +7,10 @@ pub fn normalize_number(value: &str) -> String {
     let parsed = value.trim().parse::<f64>();
     match parsed {
         Ok(number) if number.fract() == 0.0 => format!("{:.0}", number),
-        Ok(number) => format!("{number:.12}").trim_end_matches('0').trim_end_matches('.').to_string(),
+        Ok(number) => format!("{number:.12}")
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .to_string(),
         Err(_) => value.trim().to_ascii_lowercase(),
     }
 }

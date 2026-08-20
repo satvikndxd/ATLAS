@@ -12,6 +12,7 @@ dependencies = []
 
 [project.optional-dependencies]
 test = ["pytest>=8.0", "hypothesis>=6.0"]
+live-db = ["pyodbc>=5.1", "psycopg[binary]>=3.2"]
 
 [project.scripts]
 atlas = "apps.cli.atlas_cli:main"
@@ -28,6 +29,12 @@ include = ["atlas_core*", "apps*"]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-q"
+markers = [
+  "integration: disposable persistence integration tests",
+  "live_db: tests requiring a configured SQL Server or PostgreSQL instance",
+  "stress: long-running performance tests",
+  "security: authorization and secret-handling tests",
+]
 
 [tool.ruff]
 line-length = 100

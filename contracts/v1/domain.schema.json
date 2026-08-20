@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/satvikndxd/ATLAS/contracts/v1/domain.schema.json",
+  "title": "ATLAS v1 Domain Contracts",
+  "type": "object",
+  "definitions": {
+    "Migration": {
+      "type": "object",
+      "required": ["schema_version", "migration_id", "source", "target", "state", "plan_version", "created_at", "updated_at"],
+      "properties": {
+        "schema_version": {"const": "1.0"},
+        "migration_id": {"type": "string", "minLength": 1},
+        "source": {"type": "string", "minLength": 1},
+        "target": {"type": "string", "minLength": 1},
+        "state": {"enum": ["DRAFT", "VALIDATING", "PLANNED", "APPROVAL_REQUIRED", "APPROVED", "RUNNING", "PAUSED", "RECOVERING", "RECONCILING", "VERIFIED", "CUTOVER_READY", "CUTOVER", "COMPLETED", "FAILED", "ABORTED", "ROLLED_BACK"]},
+        "plan_version": {"type": "string"},
+        "created_at": {"type": "string", "format": "date-time"},
+        "updated_at": {"type": "string", "format": "date-time"},
+        "progress": {"type": "number", "minimum": 0, "maximum": 1},
+        "source_schema_fingerprint": {"type": ["string", "null"]},
+        "target_schema_fingerprint": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "MigrationJob": {
+      "type": "object",
+      "required": ["schema_version", "job_id", "migration_id", "state", "attempt"],
+      "properties": {
+        "schema_version": {"const": "1.0"},
+        "job_id": {"type": "string"},
+        "migration_id": {"type": "string"},
+        "table": {"type": ["string", "null"]},
+        "partition": {"type": ["string", "null"]},
+        "state": {"enum": ["QUEUED", "CLAIMED", "RUNNING", "COMPLETED", "FAILED", "EXPIRED", "REASSIGNED"]},
+        "worker_id": {"type": ["string", "null"]},
+        "lease_id": {"type": ["string", "null"]},
+        "lease_expiry": {"type": ["string", "null"], "format": "date-time"},
+        "attempt": {"type": "integer", "minimum": 0},
+        "progress": {"type": "number", "minimum": 0, "maximum": 1}
+      },
+      "additionalProperties": false
+    },
+    "Checkpoint": {
+      "type": "object",
+      "required": ["schema_version", "checkpoint_id", "migration_id", "job_id", "batch_id", "source_position", "checksum", "created_at"],
+      "properties": {
+        "schema_version": {"const": "1.0"},
+        "checkpoint_id": {"type": "string"},
+        "migration_id": {"type": "string"},
+        "job_id": {"type": "string"},
+        "batch_id": {"type": "string"},
+        "source_position": {"type": "string"},
+        "cdc_offset": {"type": ["integer", "null"]},
+        "target_state": {"type": "string"},
+        "checksum": {"type": "string"},
+        "created_at": {"type": "string", "format": "date-time"}
+      },
+      "additionalProperties": false
+    },
+    "CDCEvent": {
+      "type": "object",
+      "required": ["schema_version", "event_id", "source_position", "table", "primary_key", "operation", "sequence", "timestamp"],
+      "properties": {
+        "schema_version": {"const": "1.0"},
+        "event_id": {"type": "string"},
+        "source_position": {"type": "string"},
+        "table": {"type": "string"},
+        "primary_key": {"type": "string"},
+        "operation": {"enum": ["INSERT", "UPDATE", "DELETE"]},
+        "before": {"type": ["object", "null"]},
+        "after": {"type": ["object", "null"]},
+        "timestamp": {"type": "string", "format": "date-time"},
+        "sequence": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "Reconciliation": {
+      "type": "object",
+      "required": ["schema_version", "reconciliation_id", "migration_id", "table", "status", "source_count", "target_count", "created_at"],
+      "properties": {
+        "schema_version": {"const": "1.0"},
+        "reconciliation_id": {"type": "string"},
+        "migration_id": {"type": "string"},
+        "table": {"type": "string"},
+        "status": {"enum": ["RUNNING", "PASSED", "FAILED", "INCONCLUSIVE"]},
+        "byte_equivalent": {"type": ["boolean", "null"]},
+        "semantic_equivalent": {"type": ["boolean", "null"]},
+        "source_count": {"type": "integer", "minimum": 0},
+        "target_count": {"type": "integer", "minimum": 0},
+        "missing_keys": {"type": "array", "items": {"type": "string"}},
+        "unexpected_keys": {"type": "array", "items": {"type": "string"}},
+        "invariant_errors": {"type": "array", "items": {"type": "string"}},
+        "created_at": {"type": "string", "format": "date-time"}
+      },
+      "additionalProperties": false
+    },
+    "Incident": {
+      "type": "object",
+      "required": ["schema_version", "incident_id", "migration_id", "severity", "title", "status", "created_at"],
+      "properties": {
+        "schema_version": {"const": "1.0"},
+        "incident_id": {"type": "string"},
+        "migration_id": {"type": "string"},
+        "severity": {"enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]},
+        "title": {"type": "string"},
+        "status": {"enum": ["OPEN", "ACKNOWLEDGED", "MITIGATED", "RESOLVED", "ESCALATED"]},
+        "hypothesis": {"type": ["string", "null"]},
+        "created_at": {"type": "string", "format": "date-time"}
+      },
+      "additionalProperties": false
+    },
+    "Approval": {
+      "type": "object",
+      "required": ["schema_version", "approval_id", "migration_id", "operation", "status", "requested_by", "requested_at"],
+      "properties": {
+        "schema_version": {"const": "1.0"},
+        "approval_id": {"type": "string"},
+        "migration_id": {"type": "string"},
+        "operation": {"type": "string"},
+        "status": {"enum": ["PENDING", "APPROVED", "REJECTED", "EXPIRED"]},
+        "requested_by": {"type": "string"},
+        "approved_by": {"type": ["string", "null"]},
+        "requested_at": {"type": "string", "format": "date-time"},
+        "decision_reason": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "PolicyDecision": {
+      "type": "object",
+      "required": ["schema_version", "decision_id", "policy_version", "allowed", "reasons", "evaluated_at"],
+      "properties": {
+        "schema_version": {"const": "1.0"},
+        "decision_id": {"type": "string"},
+        "policy_version": {"type": "string"},
+        "allowed": {"type": "boolean"},
+        "reasons": {"type": "array", "items": {"type": "string"}},
+        "evaluated_at": {"type": "string", "format": "date-time"}
+      },
+      "additionalProperties": false
+    },
+    "Artifact": {
+      "type": "object",
+      "required": ["schema_version", "artifact_id", "artifact_type", "content_hash", "producer", "created_at"],
+      "properties": {
+        "schema_version": {"const": "1.0"},
+        "artifact_id": {"type": "string"},
+        "artifact_type": {"type": "string"},
+        "content_hash": {"type": "string"},
+        "producer": {"type": "string"},
+        "created_at": {"type": "string", "format": "date-time"}
+      },
+      "additionalProperties": false
+    }
+  }
+}
